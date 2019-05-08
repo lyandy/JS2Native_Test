@@ -84,17 +84,18 @@ static NSString * const PropertyTypeId = @"@";
                 SEL sel = method_getName(methods[i]);
                 NSString *selName = [NSString stringWithUTF8String:sel_getName(sel)];
                 
-                if ([selName hasPrefix:@"Js2Native__"] == YES)
+                NSString *prefix = @"Js2Native__";
+                if ([selName hasPrefix:prefix] == YES)
                 {
                     NSLog(@"%@", selName);
-                    NSString *jsNameKey = nil;
-                    
-                    NSArray<NSString *> *arr = [selName componentsSeparatedByString:@"__"];
+
+                    NSString *jsRealSelName = [selName substringFromIndex:[selName rangeOfString:prefix].length];;
                     
                     NSArray<NSString *> *paramsArr = nil;
-                    if (arr.count == 2)
+                    NSString *jsNameKey = nil;
+                    if (jsRealSelName.length > 0)
                     {
-                        paramsArr = [arr.lastObject componentsSeparatedByString:@":"];
+                        paramsArr = [jsRealSelName componentsSeparatedByString:@":"];
                         jsNameKey = paramsArr.firstObject;
                     }
                     if (jsNameKey.length > 0)
