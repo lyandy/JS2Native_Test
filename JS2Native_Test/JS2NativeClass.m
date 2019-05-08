@@ -72,137 +72,139 @@ static NSString * const PropertyTypeId = @"@";
 
 + (NSDictionary<NSString *, NSDictionary *> *)getSelDictStrByJsName:(NSString *)jsName relation:(NSObject *)relation
 {
-    static NSMutableDictionary *dictM = nil;
-    if (dictM == nil)
-    {
-        dictM = [NSMutableDictionary dictionary];
-        
-        unsigned int count;
-        Method *methods = class_copyMethodList([relation class], &count);
-        for (int i = 0; i < count; i++) {
-            SEL sel = method_getName(methods[i]);
-            NSString *selName = [NSString stringWithUTF8String:sel_getName(sel)];
+    @synchronized (self) {
+        static NSMutableDictionary *dictM = nil;
+        if (dictM == nil)
+        {
+            dictM = [NSMutableDictionary dictionary];
             
-            if ([selName hasPrefix:@"Js2Native__"] == YES)
-            {
-                NSLog(@"%@", selName);
-                NSString *jsNameKey = nil;
+            unsigned int count;
+            Method *methods = class_copyMethodList([relation class], &count);
+            for (int i = 0; i < count; i++) {
+                SEL sel = method_getName(methods[i]);
+                NSString *selName = [NSString stringWithUTF8String:sel_getName(sel)];
                 
-                NSArray<NSString *> *arr = [selName componentsSeparatedByString:@"__"];
-                
-                NSArray<NSString *> *paramsArr = nil;
-                if (arr.count == 2)
+                if ([selName hasPrefix:@"Js2Native__"] == YES)
                 {
-                    paramsArr = [arr.lastObject componentsSeparatedByString:@":"];
-                    jsNameKey = paramsArr.firstObject;
-                }
-                if (jsNameKey.length > 0)
-                {
-#if DEBUG
-                    NSString *assertStr = [NSString stringWithFormat:@"js2native method for %@ should be single", jsNameKey];
-                    NSAssert(dictM[jsNameKey] == nil, assertStr);
-#endif
-                    NSMutableDictionary *signatureDictM = [NSMutableDictionary dictionary];
-                    // 方法签名(方法的描述)
-                    NSMethodSignature *signature = [[relation class] instanceMethodSignatureForSelector:sel];
-                    [signatureDictM setValue:signature forKey:@"signature"];
-                    [signatureDictM setValue:selName forKey:@"sel"];
+                    NSLog(@"%@", selName);
+                    NSString *jsNameKey = nil;
                     
-                    NSMutableArray *paramInvocationBlockArrM = [NSMutableArray array];
-                    [signatureDictM setValue:paramInvocationBlockArrM forKey:@"paramInvocation"];
+                    NSArray<NSString *> *arr = [selName componentsSeparatedByString:@"__"];
                     
-                    [dictM setValue:signatureDictM forKey:jsNameKey];
-                    
-                    NSInteger paramsCount = signature.numberOfArguments - 3; // 除self、_cmd、query以外的参数个数
-                    for (NSInteger i = 0; i < paramsCount; i++)
+                    NSArray<NSString *> *paramsArr = nil;
+                    if (arr.count == 2)
                     {
-                        NSString *type = [NSString stringWithUTF8String:[signature getArgumentTypeAtIndex:i + 3]].lowercaseString;
+                        paramsArr = [arr.lastObject componentsSeparatedByString:@":"];
+                        jsNameKey = paramsArr.firstObject;
+                    }
+                    if (jsNameKey.length > 0)
+                    {
+#if DEBUG
+                        NSString *assertStr = [NSString stringWithFormat:@"js2native method for %@ should be single", jsNameKey];
+                        NSAssert(dictM[jsNameKey] == nil, assertStr);
+#endif
+                        NSMutableDictionary *signatureDictM = [NSMutableDictionary dictionary];
+                        // 方法签名(方法的描述)
+                        NSMethodSignature *signature = [[relation class] instanceMethodSignatureForSelector:sel];
+                        [signatureDictM setValue:signature forKey:@"signature"];
+                        [signatureDictM setValue:selName forKey:@"sel"];
                         
-                        // 需要做参数类型判断然后解析成对应类型
-                        if ([type isEqualToString:PropertyTypeInt])
+                        NSMutableArray *paramInvocationBlockArrM = [NSMutableArray array];
+                        [signatureDictM setValue:paramInvocationBlockArrM forKey:@"paramInvocation"];
+                        
+                        [dictM setValue:signatureDictM forKey:jsNameKey];
+                        
+                        NSInteger paramsCount = signature.numberOfArguments - 3; // 除self、_cmd、query以外的参数个数
+                        for (NSInteger i = 0; i < paramsCount; i++)
                         {
-                            [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
-                                int value = [param intValue];
-                                [invocation setArgument:&value atIndex:index];
-                            }]];
-                        }
-                        else if ([type isEqualToString:PropertyTypeShort])
-                        {
-                            [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
-                                short value = (short)[param intValue];
-                                [invocation setArgument:&value atIndex:index];
-                            }]];
-                        }
-                        else if ([type isEqualToString:PropertyTypeFloat])
-                        {
-                            [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
-                                float value = [param floatValue];
-                                [invocation setArgument:&value atIndex:index];
-                            }]];
-                        }
-                        else if ([type isEqualToString:PropertyTypeDouble])
-                        {
-                            [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
-                                double value = [param doubleValue];
-                                [invocation setArgument:&value atIndex:index];
-                            }]];
-                        }
-                        else if ([type isEqualToString:PropertyTypeLong])
-                        {
-                            [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
-                                long value = (long)[param longLongValue];
-                                [invocation setArgument:&value atIndex:index];
-                            }]];
-                        }
-                        else if ([type isEqualToString:PropertyTypeLongLong])
-                        {
-                            [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
-                                long long value = [param longLongValue];
-                                [invocation setArgument:&value atIndex:index];
-                            }]];
-                        }
-                        else if ([type isEqualToString:PropertyTypeChar])
-                        {
-                            [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
-                                char value = (char)[param intValue];
-                                [invocation setArgument:&value atIndex:index];
-                            }]];
-                        }
-                        else if ([type isEqualToString:PropertyTypeBOOL1])
-                        {
-                            [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
-                                NSNumber *value = [NSNumber numberWithBool:[param boolValue]];
-                                [invocation setArgument:&value atIndex:index];
-                            }]];
-                        }
-                        else if ([type isEqualToString:PropertyTypeBOOL2])
-                        {
-                            [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
-                                BOOL value = [param boolValue];
-                                [invocation setArgument:&value atIndex:index];
-                            }]];
-                        }
-                        else if ([type isEqualToString:PropertyTypeId])
-                        {
-                            [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
-                                NSString *value = param;
-                                [invocation setArgument:&value atIndex:index];
-                            }]];
-                        }
-                        else
-                        {
-                            [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
-                            }]];
+                            NSString *type = [NSString stringWithUTF8String:[signature getArgumentTypeAtIndex:i + 3]].lowercaseString;
+                            
+                            // 需要做参数类型判断然后解析成对应类型
+                            if ([type isEqualToString:PropertyTypeInt])
+                            {
+                                [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
+                                    int value = [param intValue];
+                                    [invocation setArgument:&value atIndex:index];
+                                }]];
+                            }
+                            else if ([type isEqualToString:PropertyTypeShort])
+                            {
+                                [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
+                                    short value = (short)[param intValue];
+                                    [invocation setArgument:&value atIndex:index];
+                                }]];
+                            }
+                            else if ([type isEqualToString:PropertyTypeFloat])
+                            {
+                                [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
+                                    float value = [param floatValue];
+                                    [invocation setArgument:&value atIndex:index];
+                                }]];
+                            }
+                            else if ([type isEqualToString:PropertyTypeDouble])
+                            {
+                                [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
+                                    double value = [param doubleValue];
+                                    [invocation setArgument:&value atIndex:index];
+                                }]];
+                            }
+                            else if ([type isEqualToString:PropertyTypeLong])
+                            {
+                                [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
+                                    long value = (long)[param longLongValue];
+                                    [invocation setArgument:&value atIndex:index];
+                                }]];
+                            }
+                            else if ([type isEqualToString:PropertyTypeLongLong])
+                            {
+                                [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
+                                    long long value = [param longLongValue];
+                                    [invocation setArgument:&value atIndex:index];
+                                }]];
+                            }
+                            else if ([type isEqualToString:PropertyTypeChar])
+                            {
+                                [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
+                                    char value = (char)[param intValue];
+                                    [invocation setArgument:&value atIndex:index];
+                                }]];
+                            }
+                            else if ([type isEqualToString:PropertyTypeBOOL1])
+                            {
+                                [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
+                                    NSNumber *value = [NSNumber numberWithBool:[param boolValue]];
+                                    [invocation setArgument:&value atIndex:index];
+                                }]];
+                            }
+                            else if ([type isEqualToString:PropertyTypeBOOL2])
+                            {
+                                [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
+                                    BOOL value = [param boolValue];
+                                    [invocation setArgument:&value atIndex:index];
+                                }]];
+                            }
+                            else if ([type isEqualToString:PropertyTypeId])
+                            {
+                                [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
+                                    NSString *value = param;
+                                    [invocation setArgument:&value atIndex:index];
+                                }]];
+                            }
+                            else
+                            {
+                                [paramInvocationBlockArrM addObject:@[paramsArr[i + 1], ^(NSString * param, NSInvocation *invocation, NSUInteger index) {
+                                }]];
+                            }
                         }
                     }
                 }
+                
             }
-            
+            free(methods);
         }
-        free(methods);
+        
+        return dictM[jsName];
     }
-    
-    return dictM[jsName];
 }
 
 
